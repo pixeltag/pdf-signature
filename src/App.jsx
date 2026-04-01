@@ -10,12 +10,68 @@ import {
   ChevronRight,
   RotateCcw,
   Move,
+  Check,
+  X,
+  Maximize,
   Layers
 } from 'lucide-react';
 import './index.css';
 
 // Set up local pdfjs worker
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
+function SignatureModal({ isOpen, onClose, onSave, signature, aspectRatio }) {
+  const [pos, setPos] = useState({ x: 50, y: 50 });
+  const [size, setSize] = useState({ width: 150, height: 80 });
+  const modalPageRef = useRef(null);
+
+  if (!isOpen) return null;
+
+  const MODAL_H = 424;
+  const MODAL_W = MODAL_H * aspectRatio;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-content glass">
+        <div className="modal-header">
+          <h3>Set Signature Position</h3>
+          <p>This will be applied to all pages of your PDF</p>
+        </div>
+
+        <div className="modal-body">
+          <div className="a4-preview-container" style={{ width: MODAL_W, height: MODAL_H }} ref={modalPageRef}>
+            <div className="a4-page-dummy">
+              <span className="a4-label">PAGE PREVIEW ({Math.round(aspectRatio * 100) / 100})</span>
+              <Rnd
+                position={{ x: pos.x, y: pos.y }}
+                size={{ width: size.width, height: size.height }}
+                onDragStop={(e, d) => setPos({ x: d.x, y: d.y })}
+                onResizeStop={(e, direction, ref, delta, position) => {
+                  setSize({
+                    width: parseInt(ref.style.width),
+                    height: parseInt(ref.style.height),
+                  });
+                  setPos(position);
+                }}
+                bounds="parent"
+                className="signature-draggable design-mode"
+              >
+                <img src={signature} alt="sig" className="signature-image" draggable={false} />
+              </Rnd>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}><X size={16} /> Cancel</button>
+          <button className="btn btn-primary" onClick={() => onSave(pos, size, MODAL_W, MODAL_H)}>
+            <Check size={16} /> Apply to All Pages
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [pdfFile, setPdfFile] = useState(null); // Used for export (Uint8Array)
@@ -26,6 +82,8 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [pageDimensions, setPageDimensions] = useState({});
   const [pageAnnotations, setPageAnnotations] = useState({});
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState(1); // width / height
 
   const containerRef = useRef(null);
 
@@ -35,15 +93,10 @@ function App() {
       const reader = new FileReader();
       reader.onload = (e) => {
         const buffer = e.target.result;
-
-        // 1. Store a clean binary copy for export
         setPdfFile(new Uint8Array(buffer));
-
-        // 2. Create a Blob URL for the renderer to prevent ArrayBuffer detachment
         const blob = new Blob([buffer], { type: 'application/pdf' });
         if (pdfUrl) URL.revokeObjectURL(pdfUrl);
         setPdfUrl(URL.createObjectURL(blob));
-
         setPageAnnotations({});
         setPageDimensions({});
       };
@@ -53,20 +106,45 @@ function App() {
 
   const onSignatureChange = (e) => {
     const file = e.target.files[0];
-    if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setSignature(e.target.result);
-        if (numPages) {
-          const initialAnnotations = {};
-          for (let i = 1; i <= numPages; i++) {
-            initialAnnotations[i] = { x: 50, y: 50, width: 150, height: 80 };
-          }
-          setPageAnnotations(initialAnnotations);
-        }
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    // Validation
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Invalid file format. Please upload a PNG, JPG, or JPEG signature.');
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setSignature(e.target.result);
+      setIsModalOpen(true);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const saveGlobalSignature = (pos, size, modalW, modalH) => {
+    if (!numPages) return;
+
+    const newAnnotations = {};
+    for (let i = 1; i <= numPages; i++) {
+      const dims = pageDimensions[i] || Object.values(pageDimensions)[0];
+      if (dims) {
+        const scaleX = dims.width / modalW;
+        const scaleY = dims.height / modalH;
+
+        newAnnotations[i] = {
+          x: pos.x * scaleX,
+          y: pos.y * scaleY,
+          width: size.width * scaleX,
+          height: size.height * scaleY
+        };
+      } else {
+        newAnnotations[i] = { ...pos, ...size };
+      }
+    }
+    setPageAnnotations(newAnnotations);
+    setIsModalOpen(false);
   };
 
   const onDocumentLoadSuccess = ({ numPages }) => {
@@ -75,9 +153,20 @@ function App() {
   };
 
   const handlePageLoadSuccess = (page) => {
-    const { width, height } = page.getViewport({ scale: 1 });
+    const renderWidth = containerRef.current?.offsetWidth - 64 || 600;
+    const viewport = page.getViewport({ scale: 1 });
+    const scale = renderWidth / viewport.width;
+    const actualViewport = page.getViewport({ scale });
+
     const pNum = page.pageNumber;
-    setPageDimensions(prev => ({ ...prev, [pNum]: { width, height } }));
+    setPageDimensions(prev => ({
+      ...prev,
+      [pNum]: { width: actualViewport.width, height: actualViewport.height }
+    }));
+
+    if (pNum === 1) {
+      setAspectRatio(viewport.width / viewport.height);
+    }
 
     if (signature && !pageAnnotations[pNum]) {
       setPageAnnotations(prev => ({
@@ -99,7 +188,6 @@ function App() {
 
     setIsExporting(true);
     try {
-      // Use the raw binary copy which was never passed to the renderer
       const pdfDoc = await PDFDocument.load(pdfFile);
       const signatureImageBytes = await fetch(signature).then(res => res.arrayBuffer());
 
@@ -117,7 +205,7 @@ function App() {
       pages.forEach((page, index) => {
         const pNum = index + 1;
         const annotation = pageAnnotations[pNum];
-        const dims = pageDimensions[pNum];
+        const dims = pageDimensions[pNum] || Object.values(pageDimensions)[0];
 
         if (annotation && dims) {
           const { width: pdfWidth, height: pdfHeight } = page.getSize();
@@ -161,11 +249,10 @@ function App() {
     setPdfUrl(null);
     setSignature(null);
     setNumPages(null);
+    setPageAnnotations({});
   };
 
   const currentAnnotation = pageAnnotations[pageNumber] || { x: 50, y: 50, width: 150, height: 80 };
-
-  // Use the stable URL for the renderer
   const memoizedFile = useMemo(() => pdfUrl, [pdfUrl]);
 
   return (
@@ -228,16 +315,15 @@ function App() {
           <div className="card">
             <h2><ImageIcon size={18} style={{ verticalAlign: 'middle', marginRight: '8px' }} /> 2. Upload Signature</h2>
             <div className="upload-zone">
-              <input type="file" accept="image/*" onChange={onSignatureChange} />
+              <input type="file" accept="image/png, image/jpeg, image/jpg" onChange={onSignatureChange} />
               <ImageIcon color={signature ? 'var(--accent)' : 'var(--text-muted)'} size={32} />
-              <span style={{ fontSize: '13px', marginTop: '8px' }}>{signature ? 'Signature Loaded' : 'Click to upload image'}</span>
+              <span style={{ fontSize: '13px', marginTop: '8px' }}>{signature ? 'Signature Loaded' : 'Click to upload (PNG/JPG)'}</span>
             </div>
             {signature && (
-              <div className="signature-controls" style={{ marginTop: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                  <Layers size={16} color="var(--accent)" />
-                  <span style={{ fontSize: '13px', fontWeight: '500' }}>Per-Page Control Active</span>
-                </div>
+              <div style={{ marginTop: '1rem' }}>
+                <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setIsModalOpen(true)}>
+                  <Maximize size={16} /> Reposition Globally
+                </button>
               </div>
             )}
           </div>
@@ -245,7 +331,7 @@ function App() {
           {pdfUrl && signature && (
             <div className="card" style={{ background: 'rgba(99, 102, 241, 0.05)', borderColor: 'rgba(99, 102, 241, 0.2)' }}>
               <p style={{ fontSize: '13px', margin: 0 }}>
-                Signature management for <strong>Page {pageNumber}</strong>. Switch pages to place signatures independently.
+                Signature management active. Position defined will apply to <strong>all {numPages} pages</strong>.
               </p>
             </div>
           )}
@@ -300,6 +386,14 @@ function App() {
           )}
         </section>
       </main>
+
+      <SignatureModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSave={saveGlobalSignature}
+        signature={signature}
+        aspectRatio={aspectRatio}
+      />
 
       <footer className="footer">
         Powered by SignFlow Core
