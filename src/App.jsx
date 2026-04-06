@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, degrees } from 'pdf-lib';
 import { Rnd } from 'react-rnd';
 import {
   FileUp,
@@ -12,7 +12,9 @@ import {
   Maximize,
   Layers,
   X,
-  Check
+  Check,
+  RotateCw,
+  Sun
 } from 'lucide-react';
 import logo from './assets/logo.svg';
 import './index.css';
@@ -23,6 +25,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 function SignatureModal({ isOpen, onClose, onSave, signature, aspectRatio }) {
   const [pos, setPos] = useState({ x: 100, y: 300 });
   const [size, setSize] = useState({ width: 100, height: 50 });
+  const [rotation, setRotation] = useState(0);
+  const [opacity, setOpacity] = useState(1);
   const modalPageRef = useRef(null);
 
   if (!isOpen) return null;
@@ -34,13 +38,13 @@ function SignatureModal({ isOpen, onClose, onSave, signature, aspectRatio }) {
     <div className="modal-overlay">
       <div className="modal-content">
         <div className="modal-header">
-          <h3>تحديد مكان التوقيع</h3>
+          <h3>تحديد مكان وتنسيق التوقيع</h3>
           <p style={{ margin: '8px 0 0 0', fontSize: '14px', color: '#64748b' }}>
-            سيتم تطبيق هذا المكان على جميع صفحات الملف تلقائياً
+            سيتم تطبيق هذه الإعدادات على جميع صفحات الملف تلقائياً
           </p>
         </div>
 
-        <div className="modal-body">
+        <div className="modal-body" style={{ flexDirection: 'column', gap: '1.5rem' }}>
           <div className="a4-preview-container" style={{ width: MODAL_W, height: MODAL_H, position: 'relative' }} ref={modalPageRef}>
             <span className="a4-label" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', opacity: 0.1, pointerEvents: 'none', fontSize: '20px', fontWeight: 800 }}>نموذج الصفحة</span>
             <Rnd
@@ -56,15 +60,33 @@ function SignatureModal({ isOpen, onClose, onSave, signature, aspectRatio }) {
               }}
               bounds="parent"
               className="signature-draggable design-mode"
+              style={{ transform: `rotate(${rotation}deg)`, opacity: opacity }}
             >
-              <img src={signature} alt="sig" className="signature-image" draggable={false} />
+              <img src={signature} alt="sig" className="signature-image" draggable={false} style={{ transform: `rotate(${rotation}deg)`, opacity: opacity }} />
             </Rnd>
+          </div>
+
+          <div className="modal-controls" style={{ width: '100%', display: 'flex', gap: '2rem', padding: '0 2rem' }}>
+            <div className="control-group" style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <RotateCw size={16} />
+                <label style={{ fontWeight: 700, fontSize: '14px' }}>التدوير: {rotation}°</label>
+              </div>
+              <input type="range" min="0" max="360" value={rotation} onChange={(e) => setRotation(parseInt(e.target.value))} style={{ width: '100%' }} />
+            </div>
+            <div className="control-group" style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <Sun size={16} />
+                <label style={{ fontWeight: 700, fontSize: '14px' }}>الشفافية: {Math.round(opacity * 100)}%</label>
+              </div>
+              <input type="range" min="0.1" max="1" step="0.05" value={opacity} onChange={(e) => setOpacity(parseFloat(e.target.value))} style={{ width: '100%' }} />
+            </div>
           </div>
         </div>
 
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}><X size={18} /> إلغاء</button>
-          <button className="btn btn-primary" onClick={() => onSave(pos, size, MODAL_W, MODAL_H)}>
+          <button className="btn btn-primary" onClick={() => onSave(pos, size, MODAL_W, MODAL_H, rotation, opacity)}>
             <Check size={18} /> تطبيق على كل الصفحات
           </button>
         </div>
@@ -134,7 +156,7 @@ function App() {
     reader.readAsDataURL(file);
   };
 
-  const saveGlobalSignature = React.useCallback((pos, size, modalW, modalH) => {
+  const saveGlobalSignature = React.useCallback((pos, size, modalW, modalH, rotation = 0, opacity = 1) => {
     if (!numPages) return;
 
     const newAnnotations = {};
@@ -148,10 +170,12 @@ function App() {
           x: pos.x * scaleX,
           y: pos.y * scaleY,
           width: size.width * scaleX,
-          height: size.height * scaleY
+          height: size.height * scaleY,
+          rotate: rotation,
+          opacity: opacity
         };
       } else {
-        newAnnotations[i] = { ...pos, ...size };
+        newAnnotations[i] = { ...pos, ...size, rotate: rotation, opacity: opacity };
       }
     }
     setPageAnnotations(newAnnotations);
@@ -191,7 +215,7 @@ function App() {
         if (prev[pNum]) return prev;
         return {
           ...prev,
-          [pNum]: { x: 50, y: 50, width: 150, height: 80 }
+          [pNum]: { x: 50, y: 50, width: 100, height: 50, rotate: 0, opacity: 1 }
         };
       });
     }
@@ -241,6 +265,8 @@ function App() {
             y: finalY,
             width: finalWidth,
             height: finalHeight,
+            rotate: degrees(annotation.rotate || 0),
+            opacity: annotation.opacity ?? 1,
           });
         }
       });
@@ -339,8 +365,15 @@ function App() {
                       }}
                       bounds="parent"
                       className="signature-draggable"
+                      style={{ transform: `rotate(${currentAnnotation.rotate || 0}deg)`, opacity: currentAnnotation.opacity ?? 1 }}
                     >
-                      <img src={signature} alt="signature" className="signature-image" draggable={false} />
+                      <img
+                        src={signature}
+                        alt="signature"
+                        className="signature-image"
+                        draggable={false}
+                        style={{ transform: `rotate(${currentAnnotation.rotate || 0}deg)`, opacity: currentAnnotation.opacity ?? 1 }}
+                      />
                     </Rnd>
                   )}
                 </div>
@@ -393,17 +426,47 @@ function App() {
                 </span>
               </div>
               {signature && (
-                <div style={{ marginTop: '1.5rem' }}>
+                <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
                   <button
                     className="btn btn-accent"
                     style={{ width: '100%', justifyContent: 'center', borderRadius: '8px' }}
                     onClick={() => setIsModalOpen(true)}
                   >
-                    <Maximize size={18} /> تحديد مكان التوقيع للكل
+                    <Maximize size={18} /> ضبط الموقع للكل
                   </button>
                 </div>
               )}
             </div>
+
+            {signature && pdfUrl && (
+              <div className="card">
+                <h2>3. تنسيق التوقيع (الصفحة الحالية)</h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div className="slider-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <label style={{ fontSize: '13px', fontWeight: 700 }}>التدوير: {currentAnnotation.rotate || 0}°</label>
+                      <RotateCw size={14} color="var(--primary)" />
+                    </div>
+                    <input
+                      type="range" min="0" max="360"
+                      value={currentAnnotation.rotate || 0}
+                      onChange={(e) => updatePageAnnotation(pageNumber, { rotate: parseInt(e.target.value) })}
+                    />
+                  </div>
+                  <div className="slider-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <label style={{ fontSize: '13px', fontWeight: 700 }}>الشفافية: {Math.round((currentAnnotation.opacity ?? 1) * 100)}%</label>
+                      <Sun size={14} color="var(--primary)" />
+                    </div>
+                    <input
+                      type="range" min="0.1" max="1" step="0.05"
+                      value={currentAnnotation.opacity ?? 1}
+                      onChange={(e) => updatePageAnnotation(pageNumber, { opacity: parseFloat(e.target.value) })}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {pdfUrl && signature && (
               <div className="card" style={{ background: 'var(--primary-light)', borderColor: 'var(--primary)' }}>
