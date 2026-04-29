@@ -5,7 +5,7 @@
 
   color-scheme: light;
   color: #333;
-  background-color: #f0fdf4; /* Light green background similar to image */
+  background-color: #f0fdf4;
 
   --primary: #299e4b;
   --primary-dark: #1b7a37;
@@ -89,6 +89,7 @@ body {
   align-items: flex-start;
   margin-top: -3rem; /* Overlap with header */
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+  overflow-x: auto;
 }
 
 .step-item {
@@ -98,6 +99,7 @@ body {
   gap: 0.8rem;
   position: relative;
   flex: 1;
+  min-width: 100px;
 }
 
 .step-circle {
@@ -228,6 +230,18 @@ body {
 }
 
 /* Upload Zone */
+.upload-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+  .upload-grid { grid-template-columns: 1fr; }
+}
+
 .upload-zone {
   display: flex;
   flex-direction: column;
@@ -240,8 +254,7 @@ body {
   position: relative;
   background: #fbfbfb;
   transition: all 0.2s ease;
-  max-width: 600px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .upload-zone:hover {
@@ -255,6 +268,7 @@ body {
   width: 100%;
   height: 100%;
   cursor: pointer;
+  z-index: 5;
 }
 
 .upload-icon {
@@ -263,6 +277,12 @@ body {
   padding: 1.5rem;
   border-radius: 50%;
   margin-bottom: 1rem;
+}
+
+.upload-box h4 {
+  text-align: center;
+  margin-bottom: 1rem;
+  color: var(--text-main);
 }
 
 /* Inputs */
@@ -297,7 +317,7 @@ body {
 /* Editor Layout */
 .editor-layout {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  grid-template-columns: 1fr 320px;
   gap: 2rem;
 }
 
@@ -368,18 +388,37 @@ input[type="range"] {
   accent-color: var(--primary);
 }
 
-.signature-draggable {
+.signature-draggable, .stamp-draggable {
   pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--accent);
+  border: 2px solid transparent;
   cursor: move;
-  background: rgba(155, 125, 71, 0.05);
+}
+
+.signature-draggable {
+  border-color: var(--primary);
 }
 
 .signature-draggable:hover {
-  border-color: var(--primary);
+  background: rgba(41, 158, 75, 0.05);
+}
+
+.stamp-draggable {
+  border-color: var(--accent);
+}
+
+.stamp-draggable:hover {
+  background: rgba(155, 125, 71, 0.05);
+}
+
+.img-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .signature-image {
