@@ -31,7 +31,6 @@ const steps = [
 
 function App() {
   const [currentStep, setCurrentStep] = useState(1);
-  const [metadata, setMetadata] = useState('');
   
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfUrl, setPdfUrl] = useState(null);
@@ -274,17 +273,13 @@ function App() {
         if (stampUrl) drawEntity(annotation.stamp, stampImage);
       });
 
-      if (metadata) {
-          pdfDoc.setTitle(`Document - Memo: ${metadata}`);
-      }
-
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
 
       const link = document.createElement('a');
       link.href = url;
-      link.download = `document_signed_${metadata ? metadata + '_' : ''}ar.pdf`;
+      link.download = `document_signed_ar.pdf`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -422,16 +417,6 @@ function App() {
                   <li>لا يتم حفظ أي ملفات أو توقيعات على أي خوادم خارجية حفاظاً على الخصوصية.</li>
                   <li>يفضل أن تكون صورة التوقيع بخلفية شفافة (PNG) لأفضل نتيجة.</li>
                 </ul>
-              </div>
-              
-              <div className="input-group">
-                <label>رقم المعاملة / رقم المذكرة (اختياري)</label>
-                <input 
-                  type="text" 
-                  value={metadata} 
-                  onChange={(e) => setMetadata(e.target.value)} 
-                  placeholder="أدخل رقم المعاملة إذا كنت تريد تضمينه في اسم الملف"
-                />
               </div>
 
               <div className="step-actions">
